@@ -1,0 +1,25 @@
+# Cloudflare Pages headers
+
+/*.mp3
+  Content-Type: audio/mpeg
+  Cache-Control: public, max-age=31536000
+
+/*.pdf
+  Content-Type: application/pdf
+  Cache-Control: public, max-age=31536000
+
+/*.rar
+  Content-Type: application/x-rar-compressed
+  Cache-Control: public, max-age=31536000
+
+/*.docx
+  Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+  Cache-Control: public, max-age=31536000
+
+/*.html
+  Cache-Control: public, max-age=3600
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin

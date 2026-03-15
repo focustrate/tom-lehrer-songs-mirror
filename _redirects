@@ -1,0 +1,7 @@
+# Cloudflare Pages redirects
+# These ensure clean URLs work properly on Cloudflare Pages
+
+/songs    /songs/index.html    200
+/index    /index/index.html    200
+/albums   /albums/index.html   200
+/disclaimer /disclaimer/index.html 200
