@@ -714,6 +714,25 @@ def main():
                 state.downloaded_assets.add(asset_url)
                 total_assets = len(state.downloaded_assets)
 
+                # If we just downloaded a CSS file, scan it for url() references
+                _, ext = os.path.splitext(local_path.lower())
+                if ext == ".css":
+                    css_path = OUTPUT_DIR / local_path
+                    try:
+                        css_text = css_path.read_text(encoding="utf-8", errors="ignore")
+                        for match in re.findall(r"url\(['\"]?([^)\"']+)['\"]?\)", css_text):
+                            if match.startswith("data:"):
+                                continue
+                            sub_resolved = resolve_url(match, asset_url)
+                            if sub_resolved and is_internal(sub_resolved) and sub_resolved not in state.downloaded_assets:
+                                sub_local = url_to_local_path(sub_resolved)
+                                print(f"    ↓ (from CSS) {sub_local}")
+                                if download_file(session, sub_resolved, sub_local, args.delay):
+                                    state.downloaded_assets.add(sub_resolved)
+                                    total_assets = len(state.downloaded_assets)
+                    except Exception as e:
+                        print(f"    ⚠ Could not scan CSS file {local_path}: {e}")
+
         # Find new page links
         new_links = find_page_links(soup, url)
         for link in new_links:
