@@ -279,6 +279,22 @@ def find_assets(soup, page_url):
             if ext in MEDIA_EXTENSIONS:
                 assets.add(resolved)
 
+    # Background images in inline style attributes
+    for tag in soup.find_all(True, style=True):
+        style_val = tag.get("style", "")
+        for match in re.findall(r"url\(['\"]?([^)\"']+)['\"]?\)", style_val):
+            resolved = resolve_url(match, page_url)
+            if resolved and is_internal(resolved):
+                assets.add(resolved)
+
+    # Background images in <style> blocks
+    for style_tag in soup.find_all("style"):
+        if style_tag.string:
+            for match in re.findall(r"url\(['\"]?([^)\"']+)['\"]?\)", style_tag.string):
+                resolved = resolve_url(match, page_url)
+                if resolved and is_internal(resolved):
+                    assets.add(resolved)
+
     return assets
 
 
@@ -300,17 +316,21 @@ def find_page_links(soup, page_url):
 
 # ── HTML processing ───────────────────────────────────────────────────────────
 
+def rewrite_css_urls(css_text, page_url):
+    """Rewrite url() references in CSS text."""
+    def replace_css_url(match):
+        url = match.group(1).strip("'\"")
+        resolved = resolve_url(url, page_url)
+        if resolved and is_internal(resolved):
+            return f"url({rewrite_internal_url(resolved)})"
+        return match.group(0)
+    return re.sub(r"url\(([^)]+)\)", replace_css_url, css_text)
+
+
 def rewrite_html(soup, page_url, inject_banner=True):
     """Rewrite all internal URLs in a parsed HTML document."""
 
-    # Inject banner
-    if inject_banner:
-        body = soup.find("body")
-        if body:
-            banner_soup = BeautifulSoup(MIRROR_BANNER, "html.parser")
-            body.insert(0, banner_soup)
-
-    # Rewrite href, src, srcset attributes
+    # Rewrite href, src, srcset attributes FIRST (before injecting banner)
     for tag in soup.find_all(True):
         for attr in ("href", "src", "action", "poster"):
             val = tag.get(attr)
@@ -333,18 +353,32 @@ def rewrite_html(soup, page_url, inject_banner=True):
                 entries.append(" ".join(parts))
             tag["srcset"] = ", ".join(entries)
 
-    # Also look for URLs in inline CSS (background-image, etc.)
+        # Inline style attributes with url() references (background-image, etc.)
+        style_attr = tag.get("style")
+        if style_attr and "url(" in style_attr:
+            tag["style"] = rewrite_css_urls(style_attr, page_url)
+
+    # Rewrite URLs inside <style> blocks
     for style_tag in soup.find_all("style"):
         if style_tag.string:
-            text = style_tag.string
-            # Replace url(...) references to our domain
-            def replace_css_url(match):
-                url = match.group(1).strip("'\"")
-                resolved = resolve_url(url, page_url)
-                if resolved and is_internal(resolved):
-                    return f"url({rewrite_internal_url(resolved)})"
-                return match.group(0)
-            style_tag.string = re.sub(r"url\(([^)]+)\)", replace_css_url, text)
+            style_tag.string = rewrite_css_urls(style_tag.string, page_url)
+
+    # Inject banner AFTER rewriting so the banner's external links stay external
+    if inject_banner:
+        body = soup.find("body")
+        if body:
+            banner_soup = BeautifulSoup(MIRROR_BANNER, "html.parser")
+            body.insert(0, banner_soup)
+
+    # Fix audio elements: ensure they have the controls attribute
+    # (BeautifulSoup sometimes strips self-closing attributes)
+    for audio in soup.find_all("audio"):
+        audio["controls"] = ""
+        # Also make sure source children have proper type
+        for source in audio.find_all("source"):
+            src = source.get("src", "")
+            if src.endswith(".mp3"):
+                source["type"] = "audio/mpeg"
 
     return str(soup)
 
